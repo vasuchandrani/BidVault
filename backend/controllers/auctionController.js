@@ -7,7 +7,9 @@ import { auctionLogger } from "../services/auctionLogger.js";
 export const createAuction = async (req, res) => {
   try {
     const { item, startingPrice, minIncrement, startTime, endTime } = req.body;
-    const createdBy = req.user._id;
+    const { userId } = req.params;
+
+    const createdBy = userId;
 
     const auction = await Auction.create({
       item,
@@ -32,8 +34,7 @@ export const createAuction = async (req, res) => {
  */
 export const editAuction = async (req, res) => {
   try {
-    const { auctionId } = req.params;
-    const userId = req.user._id;
+    const { auctionId, userId } = req.params;
     const updates = req.body;
 
     const auction = await Auction.findById(auctionId);
@@ -85,8 +86,7 @@ export const editAuction = async (req, res) => {
  */
 export const deleteAuction = async (req, res) => {
   try {
-    const { auctionId } = req.params;
-    const userId = req.user._id;
+    const { auctionId, userId } = req.params;
 
     const auction = await Auction.findById(auctionId);
     if (!auction) {

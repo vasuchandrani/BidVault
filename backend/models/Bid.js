@@ -15,7 +15,7 @@ const bidSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
-  placedAt: {
+  lastPlacedAt: {
     type: Date,
     default: Date.now,
   },

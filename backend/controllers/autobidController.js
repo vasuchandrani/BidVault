@@ -1,5 +1,8 @@
 import AutoBid from "../models/AutoBid.js"
+import Bid from "../models/Bid.js";
 import Auction from "../models/Auction.js";
+import { bidLogger } from "../services/bidLogger.js"
+import { autobidLogger } from "../services/autobidLogger.js";
 
 export const setAutoBid = async (req, res) => {
   
@@ -30,6 +33,8 @@ export const setAutoBid = async (req, res) => {
     await auction.save();
   }
 
+  autobidLogger(`User ${userId} set autobid with maximum limit: ${maxLimit}`);
+
    if (autobid.isActive && auction.status == "LIVE" && (auction.currentBid == 0 || auction.currentBid < maxLimit)) {
       const nextBid = auction.currentBid
         ? auction.currentBid + auction.minIncrement
@@ -41,6 +46,23 @@ export const setAutoBid = async (req, res) => {
         auction.currentWinner = userId;
         auction.totalBids += 1;
 
+        autobid.lastBidAmount = nextBid;
+        autobid.totalAutoBidsPlaced += 1;
+
+        const bid = Bid.findOne({ auctionId, userId });
+        if (!bid) {
+          bid = await Bid.create({
+            auctionId: auctionId,
+            userId: userId,
+            amount: amount
+          });
+        }
+        else {
+          bid.amount = amount;
+          bid.lastPlacedAt = Date.now();
+        }
+
+        bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Autobid`);
         await auction.save();
       }
     }
@@ -49,16 +71,17 @@ export const setAutoBid = async (req, res) => {
 
 export const editAutoBid = async (req, res) => {
   try {
-    const { auctionId, userId, newMaxLimit } = req.body;
+    const { newMaxLimit } = req.body;
+    const { autobidId } = req.params;
 
-    if (!auctionId || !userId || !newMaxLimit) {
+    if (!autobidId) {
       return res.status(400).json({
         success: false,
-        message: "auctionId, userId, and newMaxLimit are required",
+        message: "This Autobid is not in DB",
       });
     }
 
-    const autobid = await AutoBid.findOne({ auctionId, userId });
+    const autobid = await AutoBid.findById(autobidId);
     if (!autobid) {
       return res.status(404).json({
         success: false,
@@ -66,6 +89,7 @@ export const editAutoBid = async (req, res) => {
       });
     }
 
+    const { auctionId } = req.params;
     const auction = await Auction.findById(auctionId);
     if (!auction) {
       return res.status(404).json({
@@ -74,8 +98,17 @@ export const editAutoBid = async (req, res) => {
       });
     }
 
+    if (auction.status === "ENDED" || auction.status === "CANCELLED") {
+      return res.status(404).json({
+        success: false,
+        message: "No updatation allowed for Autobid in this Auction",
+      });
+    }
+
     autobid.maxLimit = newMaxLimit;
     await autobid.save();
+
+    autobidLogger(`User ${userId} update the max limit to ${newMaxLimit}`);
 
     if (autobid.isActive && auction.currentWinner?.toString() !== userId.toString()) {
       const nextBid = auction.currentBid + auction.minIncrement;
@@ -85,6 +118,23 @@ export const editAutoBid = async (req, res) => {
         auction.currentWinner = userId;
         auction.totalBids += 1;
 
+        autobid.lastBidAmount = nextBid;
+        autobid.totalAutoBidsPlaced += 1;
+
+        const bid = Bid.findOne({ auctionId, userId });
+        if (!bid) {
+          bid = await Bid.create({
+            auctionId: auctionId,
+            userId: userId,
+            amount: amount
+          });
+        }
+        else {
+          bid.amount = amount;
+          bid.lastPlacedAt = Date.now();
+        }
+
+        bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Autobid`);
         await auction.save();
       }
     }
@@ -106,19 +156,12 @@ export const editAutoBid = async (req, res) => {
 };
 
 export const activateAutoBid = async (req, res) => {
+  
   try {
-    const { auctionId, userId } = req.body;
-    // const userId = req.user._id;  
+    const { auctionId, autobidId } = req.params;
+    const { userId } = req.user._id;
 
-    if (!auctionId) {
-      return res.status(400).json({
-        success: false,
-        message: "auctionId is required",
-      });
-    }
-
-    const existingAutoBid = await AutoBid.findOne({ auctionId, userId });
-
+    const existingAutoBid = await AutoBid.findById(autobidId);
     if (!existingAutoBid) {
       return res.status(404).json({
         success: false,
@@ -135,6 +178,8 @@ export const activateAutoBid = async (req, res) => {
 
     existingAutoBid.isActive = true;
     await existingAutoBid.save();
+
+    autobidLogger(`User ${userId} activated the autobid ${autobidId}`)
 
     await Auction.findByIdAndUpdate(auctionId, {
       $addToSet: { autoBidders: userId },
@@ -157,17 +202,10 @@ export const activateAutoBid = async (req, res) => {
 
 export const deactivateAutoBid = async (req, res) => {
   try {
-    const { auctionId, userId } = req.body;
-    // const userId = req.user._id; 
+    const { auctionId, autobidId } = req.params;
+    const userId = req.user._id; 
 
-    if (!auctionId) {
-      return res.status(400).json({
-        success: false,
-        message: "auctionId is required",
-      });
-    }
-
-    const existingAutoBid = await AutoBid.findOne({ auctionId, userId });
+    const existingAutoBid = await AutoBid.findById(autobidId);
     if (!existingAutoBid) {
       return res.status(404).json({
         success: false,
@@ -177,6 +215,8 @@ export const deactivateAutoBid = async (req, res) => {
 
     existingAutoBid.isActive = false;
     await existingAutoBid.save();
+
+    autobidLogger(`User ${userId} deactivated the autobid ${autobidId}`)
 
     await Auction.findByIdAndUpdate(auctionId, {
       $pull: { autoBidders: userId },
@@ -196,19 +236,3 @@ export const deactivateAutoBid = async (req, res) => {
     });
   }
 };
-
-// export const removeAutoBid = async (req, res) => {
-
-//   const { auctionId, userId } = req.body;
-
-//   const result = await AutoBid.findOneAndDelete({
-//     auctionId: auctionId,
-//     userId: userId,
-//   });
-
-//   if (!result) {
-//     return res.status(404).json({ error: "Auto-bid not found for this user or auction." });
-//   }
-
-//   res.status(200).json({ success: true, message: "Auto-bid removed successfully." });
-// };

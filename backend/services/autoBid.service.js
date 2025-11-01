@@ -1,6 +1,7 @@
 import Auction from "../models/Auction.js";
 import AutoBid from "../models/AutoBid.js";
 import Bid from "../models/Bid.js";
+import { bidLogger } from "./bidLogger.js";
 
 /**
  * Auto-bid trigger logic:
@@ -19,7 +20,7 @@ export const handleAutoBids = async (auctionId) => {
 
   if (!autoBidders.length) return;
 
-  // Sort bidders by remaining balance (descending)
+  // Sort bidders by remaining balance (descending) //need modification
   autoBidders.sort((a, b) => b.maxLimit - a.maxLimit);
 
   let newBidPlaced = false;
@@ -36,12 +37,26 @@ export const handleAutoBids = async (auctionId) => {
       // send email to user that his/her maxLimit is outdated 
     }
 
-    // Place the automatic bid
-    await Bid.create({
-      auctionId,
-      userId: bidder.userId,
-      amount: nextBid,
-    });
+    // Place the bid
+    const bid = Bid.findOne({ auctionId, userId });
+    if (!bid) {
+      bid = await Bid.create({
+        auctionId,
+        userId: bidder.userId,
+        amount: nextBid,
+      });
+    }
+    else {
+      bid.amount = nextBid;
+      bid.lastPlacedAt = Date.now();
+    }
+
+    bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Auto-bid`);
+
+    // Update autobid
+    const autobid = AutoBid.findOne({ auctionId, userId })
+    autobid.lastBidAmount = nextBid;
+    autobid.totalAutoBidsPlaced += 1;
 
     // Update auction
     auction.currentBid = nextBid;

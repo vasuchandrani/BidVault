@@ -27,17 +27,13 @@ export const validateBid = async (req, res, next) => {
   next();
 };
 
-export const validAutoBid = async (req, res, next) => {
+export const validateAutoBid = async (req, res, next) => {
 
-  const { auctionId, maxLimit, incrementStep } = req.body;
+  const { auctionId, maxLimit } = req.body;
 
   // auction id is required and maxLimit must be a number
-  if (!auctionId || typeof maxLimit !== "number" || typeof incrementStep !== "number") {
+  if (!auctionId || typeof maxLimit !== "number") {
     return res.status(400).json({ success: false, message: "auctionId and numeric amount are required" });
-  }
-
-  if (incrementStep <= 0) {
-    return res.status(400).json({ success: false, message: "incrementStep must be greater than zero" });
   }
 
   // seller can not set auto-bid
@@ -45,6 +41,10 @@ export const validAutoBid = async (req, res, next) => {
   const userId = req.user._id; 
   if (userId === auction.createdBy) {
     return res.status(400).json({ success: false, message: "You are seller, you can't set auto-bid in your auction" });
+  }
+
+  if (maxLimit < auction.startingPrice) {
+    return res.status(400).json({ success: false, message: "Your maxLimit is too low" }); 
   }
   
   next();

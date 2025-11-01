@@ -27,22 +27,22 @@ import { restrictToLoggedinUserOnly, checkAuth } from "./middlewares/authMiddlew
 import { restrictAdminIP } from "./middlewares/adminMiddleware.js";
 
 // home page
-app.get("/", restrictToLoggedinUserOnly, (req, res) => res.send("BidSphere Online Auction System") );
+app.get("/", restrictToLoggedinUserOnly, (req, res) => res.send("BidVault Online Auction System") );
 
 // User Route
 import authRoutes from "./routes/authRoutes.js";
-app.use("/bidsphere/user", authRoutes);
+app.use("/bidvault/user", authRoutes);
 
 // Admin Route
 import adminRoutes from "./routes/adminRoutes.js";
-app.use("/bidsphere/admin", restrictAdminIP , adminRoutes)
+app.use("/bidvault/admin", restrictAdminIP , adminRoutes)
 
 // Auction Route
 import auctionRoutes from "./routes/auctionRoutes.js";
-app.use("/bidsphere/auctions", auctionRoutes);
+app.use("/bidvault/auctions", auctionRoutes);
 
 // Bid Route
 import bidRoutes from "./routes/bidRoutes.js";
-app.use("/bidsphere/bid", bidRoutes);
+app.use("/bidvault/:auctionId/bid", bidRoutes);
 
 export default app;
