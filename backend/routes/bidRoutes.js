@@ -5,9 +5,9 @@ import { setAutoBid, deactivateAutoBid, activateAutoBid, editAutoBid } from "../
 import { restrictToLoggedinUserOnly } from "../middlewares/authMiddleware.js";
 import { validateBid, validateAutoBid } from "../middlewares/bidValidMiddleware.js";
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-// /bidvault/:auctionid/bid
+//-/bidvault/:auctionid/bid
 //bid
 router.post("/place", restrictToLoggedinUserOnly, validateBid, placeBid);
 

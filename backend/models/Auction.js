@@ -17,7 +17,7 @@ const auctionSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ["UPCOMING", "LIVE", "ENDED", "CANCELLED"],
-    default: "UPCOMING",
+    default: "LIVE",
   },
 
   startingPrice: { 

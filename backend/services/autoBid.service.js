@@ -37,10 +37,12 @@ export const handleAutoBids = async (auctionId) => {
       // send email to user that his/her maxLimit is outdated 
     }
 
+    const userId = bidder.userId;
+
     // Place the bid
-    const bid = Bid.findOne({ auctionId, userId });
+    const bid = await Bid.findOne({ auctionId, userId });
     if (!bid) {
-      bid = await Bid.create({
+      await Bid.create({
         auctionId,
         userId: bidder.userId,
         amount: nextBid,
@@ -49,6 +51,7 @@ export const handleAutoBids = async (auctionId) => {
     else {
       bid.amount = nextBid;
       bid.lastPlacedAt = Date.now();
+      await bid.save();
     }
 
     bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Auto-bid`);

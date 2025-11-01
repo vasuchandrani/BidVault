@@ -11,11 +11,11 @@ import { validateAuctionPayload } from "../middlewares/auctionValidMiddleware.js
 
 const router = express.Router();
 
-router.post("/create/:userId", restrictToLoggedinUserOnly, validateAuctionPayload, createAuction);
+router.post("/create", restrictToLoggedinUserOnly, validateAuctionPayload, createAuction);
 
-router.post("/:auctionId/:userId", restrictToLoggedinUserOnly, editAuction);
+router.post("/:auctionId", restrictToLoggedinUserOnly, editAuction);
 
-router.delete("/:auctionId/:userId", restrictToLoggedinUserOnly, deleteAuction);
+router.delete("/:auctionId", restrictToLoggedinUserOnly, deleteAuction);
 
 router.get("/:auctionId", getAuction);
 
