@@ -1,26 +1,51 @@
 import Auction from "../models/Auction.js";
-import { auctionLogger } from "../services/auctionLogger.js";
+import User from "../models/User.js"
+import { logAuctionEvent } from "../services/logger.service.js";
 
 /**
  * Create Auction
  */
 export const createAuction = async (req, res) => {
   try {
-    const { item, startingPrice, minIncrement, startTime, endTime } = req.body;
+    const { title, name, description, images=[], category, condition, metadata = {}, 
+            startingPrice, minIncrement, startTime, endTime } = req.body;
     const userId = req.user._id;
 
-    const createdBy = userId;
-
     const auction = await Auction.create({
-      item,
-      startingPrice,
-      minIncrement,
-      startTime,
-      endTime,
-      createdBy,
+      title: String(title).trim(),
+      item: {
+        name: String(name).trim(),
+        description: description || undefined,
+        category: category || undefined,
+        condition: condition || undefined,
+        images: Array.isArray(images) ? images : [],
+        metadata: metadata || {},
+      },
+      createdBy: userId,
+      startingPrice: Number(startingPrice),
+      minIncrement: Number(minIncrement),
+      currentBid: 0,
+      startTime: startTime,
+      endTime: endTime,
+      autoBidders: [],
+      totalBids: 0,
+      totalParticipants: 0,
     });
 
-    auctionLogger(`User ${req.user._id} created an auction ${auction._id}`);
+    const auctionOwner = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId: auction._id,
+      userId: auctionOwner._id,
+      userName: auctionOwner.username,
+      type: "AUCTION_CREATED",
+      details: {
+        itemName: name,
+        startingPrice,
+        minIncrement,
+        startTime,
+        endTime,
+      },
+    });
 
     res.status(201).json({ success: true, auction });
   } catch (err) {
@@ -65,7 +90,17 @@ export const editAuction = async (req, res) => {
       { new: true }
     );
 
-    auctionLogger(`User ${req.user._id} edit the auction ${auction._id}`);
+    const auctionOwner = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId: updatedAuction._id,
+      userId: auctionOwner._id,
+      userName: auctionOwner.username,
+      type: "AUCTION_UPDATED",
+      details: {
+        updatedFields: Object.keys(updates),
+        newValues: updates,
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -113,7 +148,18 @@ export const deleteAuction = async (req, res) => {
 
     await Auction.findOneAndDelete({ auctionId, userId });
 
-    auctionLogger(`User ${req.user._id} delete the auction ${auction._id}`);
+    const auctionOwner = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId: auction._id,
+      userId: auctionOwner._id,
+      userName: auctionOwner.username,
+      type: "AUCTION_DELETED",
+      details: {
+        deletedAt: new Date(),
+        auctionData: auction, 
+      },
+    });
+
 
     res.status(200).json({ success: true });
   } catch (err) {

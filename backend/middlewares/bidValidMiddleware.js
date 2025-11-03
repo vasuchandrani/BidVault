@@ -3,8 +3,8 @@ import Auction from "../models/Auction.js";
 export const validateBid = async (req, res, next) => {
 
   const { auctionId } = req.params;
-  const { userId, amount } = req.body;
-  // const userId = req.user._id;
+  const {  amount } = req.body;
+  const userId = req.user._id;
 
   // auction id is required and amount must be a number
   if (!auctionId || typeof amount !== "number") {
@@ -45,8 +45,8 @@ export const validateAutoBid = async (req, res, next) => {
     return res.status(400).json({ success: false, message: "Auction not found" });
   }
 
-  const { userId } = req.body;
-  // const userId = req.user._id; 
+  // const { userId } = req.body;
+  const userId = req.user._id; 
 
   if (auction.createdBy.toString() === userId.toString()) {
     return res.status(400).json({

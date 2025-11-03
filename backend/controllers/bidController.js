@@ -2,14 +2,19 @@ import Auction from "../models/Auction.js";
 import AutoBid from "../models/AutoBid.js";
 import Bid from "../models/Bid.js"
 import { handleAutoBids } from "../services/autoBid.service.js";
-import { bidLogger } from "../services/bidLogger.js"
+import User from "../models/User.js"
+import { logAuctionEvent } from "../services/logger.service.js";
 
 export const placeBid = async (req, res) => {
 
   const { auctionId } = req.params;
-  const { amount, userId } = req.body;
-  // const userId = req.user._id;
+  const { amount } = req.body;
+  const userId = req.user._id;
 
+  const auction = await Auction.findById(auctionId);
+  if (!auction) {
+    return res.status(404).json({ success: false, message: "Auction not found" });
+  }
   // check if user have activated autobid
   const autobid = await AutoBid.findOne({ auctionId, userId });
   if (autobid && autobid.isActive) {
@@ -29,17 +34,23 @@ export const placeBid = async (req, res) => {
   }
   else {
     bid.amount = amount;
-    bid.lastPlacedAt = Date.now();
     await bid.save();
   }
-
-  const auction = await Auction.findById(auctionId);
+  
+  //update auction
   auction.currentBid = amount;
   auction.currentWinner = userId;
   auction.totalBids += 1;
-
-  bidLogger(`User ${userId} placed a bid amount of ${amount} -- Manual-bid`);
   await auction.save();
+
+  const bidder = await User.findById(userId);
+  await logAuctionEvent({
+    auctionId,
+    userId: bidder._id,
+    userName: bidder.username,
+    type: "BID_PLACED",
+    details: { amount: amount, method: "manual" }
+  });
 
   handleAutoBids(auctionId);
 

@@ -3,12 +3,12 @@ import mongoose from "mongoose";
 const autoBidSchema = new mongoose.Schema({
   auctionId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Auction",
+    ref: "auction",
     required: true,
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    ref: "user",
     required: true,
   },
 
@@ -40,4 +40,4 @@ const autoBidSchema = new mongoose.Schema({
 
 autoBidSchema.index({ auctionId: 1, userId: 1 }, { unique: true });
 
-export default mongoose.model("AutoBid", autoBidSchema);
+export default mongoose.model("autobid", autoBidSchema);

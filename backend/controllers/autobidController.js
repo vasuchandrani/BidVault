@@ -1,14 +1,14 @@
 import AutoBid from "../models/AutoBid.js"
-import Bid from "../models/Bid.js";
 import Auction from "../models/Auction.js";
-import { bidLogger } from "../services/bidLogger.js"
-import { autobidLogger } from "../services/autobidLogger.js";
+import User from "../models/User.js"
+import { handleAutoBids } from "../services/autoBid.service.js";
+import { logAuctionEvent } from "../services/logger.service.js";
 
 export const setAutoBid = async (req, res) => {
   
   const { auctionId } = req.params;
-  const { userId, maxLimit } = req.body;
-  // const userId = req.user._id;
+  const { maxLimit } = req.body;
+  const userId = req.user._id;
 
   const auction = await Auction.findById(auctionId);
   if (!auction) {
@@ -29,54 +29,31 @@ export const setAutoBid = async (req, res) => {
     maxLimit: maxLimit,
   });
 
+  const bidder = await User.findById(userId);
+  await logAuctionEvent({
+    auctionId,
+    userId: bidder._id,
+    userName: bidder.username,
+    type: "AUTO_BID_SET",
+    details: { maxLimit, setAt: new Date() },
+  });
+
   // push autobidder
   if (!auction.autoBidders.some(id => String(id) === String(userId))) {
     auction.autoBidders.push(userId);
     await auction.save();
   }
+  
+  handleAutoBids(auctionId);
 
-  autobidLogger(`User ${userId} set autobid with maximum limit: ${maxLimit}`);
-
-   if (autobid.isActive && auction.status == "LIVE" && (auction.currentBid == 0 || auction.currentBid < maxLimit)) {
-      const nextBid = auction.currentBid
-        ? auction.currentBid + auction.minIncrement
-        : auction.startingPrice;
-
-      // Only bid if within user's max limit
-      if (nextBid <= maxLimit) {
-        auction.currentBid = nextBid;
-        auction.currentWinner = userId;
-        auction.totalBids += 1;
-
-        autobid.lastBidAmount = nextBid;
-        autobid.totalAutoBidsPlaced += 1;
-
-        const bid = await Bid.findOne({ auctionId, userId });
-        if (!bid) {
-          await Bid.create({
-            auctionId: auctionId,
-            userId: userId,
-            amount: nextBid
-          });
-        }
-        else {
-          bid.amount = nextBid;
-          bid.lastPlacedAt = Date.now();
-          await bid.save();
-        }
-
-        bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Autobid`);
-        await auction.save();
-        await autobid.save();
-      }
-    }
-  res.status(200).json(autobid);
+  return res.status(200).json(autobid);
 };
 
 export const editAutoBid = async (req, res) => {
   try {
     const { newMaxLimit } = req.body;
     const { autobidId } = req.params;
+    const userId = req.user._id;
 
     if (!autobidId) {
       return res.status(400).json({
@@ -112,38 +89,16 @@ export const editAutoBid = async (req, res) => {
     autobid.maxLimit = newMaxLimit;
     await autobid.save();
 
-    autobidLogger(`User ${userId} update the max limit to ${newMaxLimit}`);
+    const bidder = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId,
+      userId: bidder._id,
+      userName: bidder.username,
+      type: "AUTO_BID_UPDATED",
+      details: { oldLimit, newLimit: newMaxLimit }, 
+    });
 
-    if (auction.status == "LIVE" && autobid.isActive && auction.currentWinner?.toString() !== userId.toString()) {
-      const nextBid = auction.currentBid + auction.minIncrement;
-
-      if (nextBid <= newMaxLimit) {
-        auction.currentBid = nextBid;
-        auction.currentWinner = userId;
-        auction.totalBids += 1;
-
-        autobid.lastBidAmount = nextBid;
-        autobid.totalAutoBidsPlaced += 1;
-
-        const bid = await Bid.findOne({ auctionId, userId });
-        if (!bid) {
-          await Bid.create({
-            auctionId: auctionId,
-            userId: userId,
-            amount: amount
-          });
-        }
-        else {
-          bid.amount = amount;
-          bid.lastPlacedAt = Date.now();
-          await bid.save();
-        }
-
-        bidLogger(`User ${userId} placed a bid amount of ${nextBid} -- Autobid`);
-        await auction.save();
-        await autobid.save();
-      }
-    }
+    handleAutoBids(auctionId);
 
     return res.status(200).json({
       success: true,
@@ -165,33 +120,38 @@ export const activateAutoBid = async (req, res) => {
   
   try {
     const { auctionId, autobidId } = req.params;
-    const { userId } = req.body;
-    // const userId = req.user._id;
+    // const { userId } = req.body;
+    const userId = req.user._id;
 
-    const existingAutoBid = await AutoBid.findById(autobidId);
-    if (!existingAutoBid) {
+    const autobid = await AutoBid.findById(autobidId);
+    if (!autobid) {
       return res.status(404).json({
         success: false,
         message: "Auto-bid record not found for this user and auction",
       });
     }
  
-    if (existingAutoBid.isActive) {
+    if (autobid.isActive) {
       return res.status(200).json({
         success: true,
         message: "Auto-bid is already active",
       });
     }
 
-    existingAutoBid.isActive = true;
-    await existingAutoBid.save();
+    autobid.isActive = true;
+    await autobid.save();
 
-    autobidLogger(`User ${userId} activated the autobid ${autobidId}`)
-
-    await Auction.findByIdAndUpdate(auctionId, {
-      $addToSet: { autoBidders: userId },
+    const bidder = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId,
+      userId: bidder._id,
+      userName: bidder.username,
+      type: "AUTO_BID_ACTIVATED",
+      details: { activatedAt: new Date(), maxLimit: autobid.maxLimit },
     });
 
+    handleAutoBids(auctionId);
+    
     return res.status(200).json({
       success: true,
       message: "Auto-bid activated successfully",
@@ -210,8 +170,8 @@ export const activateAutoBid = async (req, res) => {
 export const deactivateAutoBid = async (req, res) => {
   try {
     const { auctionId, autobidId } = req.params;
-    const { userId } = req.body;
-    // const userId = req.user._id; 
+    // const { userId } = req.body;
+    const userId = req.user._id; 
 
     const existingAutoBid = await AutoBid.findById(autobidId);
     if (!existingAutoBid) {
@@ -224,10 +184,17 @@ export const deactivateAutoBid = async (req, res) => {
     existingAutoBid.isActive = false;
     await existingAutoBid.save();
 
-    autobidLogger(`User ${userId} deactivated the autobid ${autobidId}`)
-
     await Auction.findByIdAndUpdate(auctionId, {
       $pull: { autoBidders: userId },
+    });
+
+    const bidder = await User.findById(userId);
+    await logAuctionEvent({
+      auctionId,
+      userId: bidder._id,
+      userName: bidder.username,
+      type: "AUTO_BID_DEACTIVATED",
+      details: { deactivatedAt: new Date() },
     });
 
     return res.status(200).json({

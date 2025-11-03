@@ -2,7 +2,7 @@ export const validateAuctionPayload = (req, res, next) => {
 
   const { item, startingPrice, startTime, endTime } = req.body;
   
-  if (!item || !item.name || !startingPrice || !startTime || !endTime) {
+  if (!startingPrice || !startTime || !endTime) {
     return res.status(400).json({ success: false, message: "Missing required auction fields" });
   }
   
