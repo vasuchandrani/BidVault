@@ -1,7 +1,8 @@
 import User from "../models/User.js"; 
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { setUser , generateHashPassword} from "../services/auth.js";
-import { SendVerificationCode, WelcomeEmail } from "../services/email.sender.js";
+import { SendVerificationCode, WelcomeEmail, SendResetPwdEmail } from "../services/email.sender.js";
 
 
 async function handleRegister (req, res) {
@@ -27,7 +28,7 @@ async function handleRegister (req, res) {
     verificationCode
   });
 
-  SendVerificationCode(email, verificationCode);
+  await SendVerificationCode(email, verificationCode);
   res.status(201).json({ message: "User registered successfully" });  
 }
 
@@ -83,15 +84,88 @@ async function verifyEmail (req, res) {
     const user = await User.findOne({ email, verificationCode: code });
     // console.log(user);
     if (!user) {
-        return res.status(400).json({ message: "Invalid User" });
+      return res.status(400).json({ message: "Invalid User" });
     }
 
     user.isVerified = true;
     user.verificationCode = undefined;
     await user.save();
 
-    WelcomeEmail(user.email, user.username);
+    await WelcomeEmail(user.email, user.username);
     return res.status(200).json({ message: "Email Verified Successfully" })
 }
 
-export { handleRegister , handleLogin, handleLogout, verifyEmail };
+async function handleResetPwdEmail (req, res) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Enter your verified email" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(404).json({ message: "User is not verifid yet, first verify your email" });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenExpiry = Date.now() + 15 * 60 * 1000;
+
+    user.resetToken = resetToken;
+    user.resetTokenExpiry = resetTokenExpiry;
+    await user.save();
+
+    // const resetPwdLink = `${process.env.FRONTEND_URL}/bidvault/user/resetpwd?token=${resetToken}`;
+                      // FRONTEND_URL = https://bidvault.vercel.app
+
+    const resetPwdLink = `http://localhost:5000/bidvault/user/resetpwd?token=${resetToken}`
+
+    SendResetPwdEmail(email, resetPwdLink);
+
+    return res.status(200).json({ success: true, message: "Reset Password link is shared in your Email"});
+  }
+  catch (error) {
+    console.error("Send Reset Password email error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+async function handleResetPwd (req, res) {
+  try {
+    const { email, newPassword, confirmNewPassword } = req.body;
+
+    if (!email || !newPassword || !confirmNewPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    const isMatch = await bcrypt.compare(newPassword, user.password);
+    if (isMatch) {
+      return res.status(400).json({ message: "New password must be different from old password" });
+    }
+
+    const hashedPassword = await generateHashPassword(newPassword);
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.status(200).json({ message: "Password reset successful" });
+  } 
+  catch (error) {
+    console.error("Password reset error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export { handleRegister, handleLogin, handleLogout, verifyEmail, handleResetPwdEmail, handleResetPwd };
