@@ -141,6 +141,11 @@ export const activateAutoBid = async (req, res) => {
     autobid.isActive = true;
     await autobid.save();
 
+    await Auction.findByIdAndUpdate(
+      auctionId,
+      { $addToSet: { autoBidders: userId } }
+    );
+
     const bidder = await User.findById(userId);
     await logAuctionEvent({
       auctionId,

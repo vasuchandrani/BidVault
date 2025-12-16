@@ -15,8 +15,15 @@ const bidSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  oldBidAmounts: [Number], 
 }, { timestamps: true });
 
+// Query: get bid placed by a specific user in a specific auction
+bidSchema.index({ userId: 1, auctionId: 1 }, { unique: true });
+
+// Query: find the highest bid (or top N bids) for a specific auction
 bidSchema.index({ auctionId: 1, amount: -1 });
 
-export default mongoose.model("bid", bidSchema);
+const Bid = mongoose.model("bid", bidSchema);
+
+export default Bid;

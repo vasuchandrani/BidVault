@@ -4,6 +4,9 @@ import Bid from "../models/Bid.js";
 import User from "../models/User.js"
 import { SendOutBidEmail } from "./email.sender.js";
 import { logAuctionEvent } from "./logger.service.js"
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Auto-bid trigger logic:
  * Called every time a new bid is placed manually
@@ -29,12 +32,13 @@ export const handleAutoBids = async (auctionId) => {
     return b.maxLimit - a.maxLimit;
   });
 
-
   let newBidPlaced = false;
 
   for (const bidder of autoBidders) {
 
     if (String(bidder.userId) === String(auction.currentWinner)) continue; // skip current winner
+
+    if (bidder.isActive == false) continue;
 
     const nextBid = currentBid + minIncrement;
 
@@ -85,7 +89,19 @@ export const handleAutoBids = async (auctionId) => {
       details: { amount: nextBid },
     });
 
-    // Update auction
+    const now = new Date();
+    // Extend auction if within last 5 minutes
+    const timeDiff = auction.endTime - now;
+    if (timeDiff <= 5 * 60 * 1000) {
+      auction.endTime = new Date(auction.endTime.getTime() + 5 * 60 * 1000);
+      await logAuctionEvent({
+        auctionId,
+        userName: "System",
+        type: "AUCTION_EXTENDED",
+        details: { newEndTime: auction.endTime },
+      });
+    }
+    // Update further auction details
     auction.currentBid = nextBid;
     auction.currentWinner = bidder.userId;
     auction.totalBids += 1;
@@ -97,6 +113,7 @@ export const handleAutoBids = async (auctionId) => {
 
   // If a new bid was placed, re-check recursively — maybe other autobidders want to respond
   if (newBidPlaced) {
+    await delay(1500)
     await handleAutoBids(auctionId);
   }
 };

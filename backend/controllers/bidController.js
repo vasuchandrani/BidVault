@@ -33,11 +33,24 @@ export const placeBid = async (req, res) => {
     });
   }
   else {
+    bid.oldBidAmounts.push(bid.amount);
     bid.amount = amount;
     await bid.save();
   }
   
-  //update auction
+  const now = new Date();
+  // Extend auction if within last 5 minutes
+  const timeDiff = auction.endTime - now;
+  if (timeDiff <= 5 * 60 * 1000) {
+    auction.endTime = new Date(auction.endTime.getTime() + 5 * 60 * 1000);
+    await logAuctionEvent({
+      auctionId,
+      userName: "System",
+      type: "AUCTION_EXTENDED",
+      details: { newEndTime: auction.endTime },
+    });
+  }
+  // Update further auction details
   auction.currentBid = amount;
   auction.currentWinner = userId;
   auction.totalBids += 1;
