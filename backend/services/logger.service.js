@@ -1,4 +1,3 @@
-// utils/auctionLogger.js
 import AuctionLog from "../models/AuctionLog.js";
 
 export const logAuctionEvent = async ({

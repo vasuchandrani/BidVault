@@ -6,13 +6,9 @@ const auctionSchema = new mongoose.Schema({
         required: true, 
         trim: true 
     },
-    item: {
-        name: { type: String, required: true },
-        description: { type: String },
-        category: { type: String },
-        images: [{ type: String }],
-        metadata: { type: Object },
-        condition: { type: String, enum: ["new", "like new", "good", "fair"]},
+    product: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "product" 
     },
 
     createdBy: {
@@ -33,18 +29,19 @@ const auctionSchema = new mongoose.Schema({
         type: Number, 
         required: true 
     },
+    buyItNow: {
+        type: Number,
+    },
+
     currentBid: { 
         type: Number, 
         default: 0 
     },
-    buyItNowPrice: { 
-        type: Number, 
-    },
-
     currentWinner: { 
         type: mongoose.Schema.Types.ObjectId, 
         ref: 'user' 
     },
+
     startTime: { 
         type: Date, 
         required: true 
@@ -61,13 +58,63 @@ const auctionSchema = new mongoose.Schema({
         },
     ],
 
+    isRegistrationsStarted: {
+        type: Boolean,
+        default: false
+    },
+    registrations: [
+        {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user",
+        },
+    ],
+
+    auctionWinner: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user"
+    },
+    winningPrice: {
+        type: Number
+    },
+    paymentMethod: {
+        type: String,
+        enum: ["cod", "upi"]
+    },
+
     totalBids: { type: Number, default: 0 },
     totalParticipants: { type: Number, default: 0 },
 }, { timestamps: true });
-  
-auctionSchema.index({ status: 1, endTime: 1 });
+
+
+// Query: find live auctions ending soon
+auctionSchema.index({ status: 1, endTime: 1 }); 
+
+// Query: find auctions by creator
 auctionSchema.index({ createdBy: 1 });
+
+// Query: find upcoming auctions
 auctionSchema.index({ startTime: 1 });
+
+// Query: find auction for a specific product
+auctionSchema.index({ product: 1 });
+
+// Query: find ended auctions by creator, sorted by end time
+auctionSchema.index({ createdBy: 1, status: 1, endTime: -1 });
+
+// Query: find top active auctions
+auctionSchema.index({ totalBids: -1 });
+
+// Query: find auctions a user registered for
+auctionSchema.index({ registrations: 1 });
+
+// Query: find auctions a user has won
+auctionSchema.index({ auctionWinner: 1 });
+
+// Query: find all auctions where user is current highest bidder
+auctionSchema.index({ currentWinner: 1 });
+
+// Query: find old ended auctions for cleanup/archive
+auctionSchema.index({ endTime: 1, status: 1 });
 
 const Auction = mongoose.model("auction", auctionSchema);
 

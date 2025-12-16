@@ -1,4 +1,3 @@
-// models/AuctionLog.js
 import mongoose from "mongoose";
 
 const logEntrySchema = new mongoose.Schema({
@@ -8,6 +7,7 @@ const logEntrySchema = new mongoose.Schema({
   },
   userName: { 
     type: String,
+    default: "System",
     required: true
   },
   type: {
@@ -25,6 +25,8 @@ const logEntrySchema = new mongoose.Schema({
       "AUCTION_STARTED",
       "AUCTION_ENDED",
       "AUCTION_CANCELLED",
+      "AUCTION_EXTENDED",
+      "AUCTION_WINNER_DECLARED"
     ],
     required: true
   },
@@ -41,8 +43,17 @@ const auctionLogSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  logs: [logEntrySchema],
+  logs: [ logEntrySchema ],
 },{ timestamps: true });
 
 
-export default mongoose.model("AuctionLog", auctionLogSchema);
+// Query: find all auctions where user participated
+auctionLogSchema.index({ "logs.userId": 1 });
+
+// Query: find all logs of a specific type (e.g. BID_PLACED)
+auctionLogSchema.index({ "logs.type": 1 });
+
+
+const AuctionLog = mongoose.model("auctionLog", auctionLogSchema);
+
+export default AuctionLog;

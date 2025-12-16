@@ -1,37 +1,61 @@
 import Auction from "../models/Auction.js";
 import User from "../models/User.js"
+import Product from "../models/Product.js";
 import { logAuctionEvent } from "../services/logger.service.js";
+import { pushAdminNotification } from "../services/notification.service.js";
 
 /**
  * Create Auction
  */
-export const createAuction = async (req, res) => {
+export async function createAuction(req, res) {
   try {
-    const { title, name, description, images=[], category, condition, metadata = {}, 
-            startingPrice, minIncrement, startTime, endTime } = req.body;
-    const userId = req.user._id;
+    const {
+      title,
+      startingPrice,
+      minIncrement,
+      buyItNow,
+      startTime,
+      endTime,
+    } = req.body;
 
+    const userId = req.user._id;
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    // New auctions start as "YET_TO_BE_VERIFIED" until admin verifies them
+    const status = "YET_TO_BE_VERIFIED";
+
+    const now = new Date();
+    const regOpenTime = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+
+    let isRegistrationOpen = now >= regOpenTime && now < start;
+
+    // create product
+    const product = await Product.create(req.productData)
+
+    // create auction
     const auction = await Auction.create({
       title: String(title).trim(),
-      item: {
-        name: String(name).trim(),
-        description: description || undefined,
-        category: category || undefined,
-        condition: condition || undefined,
-        images: Array.isArray(images) ? images : [],
-        metadata: metadata || {},
-      },
+      product: product,
       createdBy: userId,
+      status,
+      verified: false,
       startingPrice: Number(startingPrice),
       minIncrement: Number(minIncrement),
+      buyItNow,
       currentBid: 0,
-      startTime: startTime,
-      endTime: endTime,
+      startTime: start,
+      endTime: end,
       autoBidders: [],
+      registrations: [],
+      isRegistrationOpen,
       totalBids: 0,
       totalParticipants: 0,
     });
 
+    product.auctionId = auction._id;
+    await product.save();
+
+    // logs
     const auctionOwner = await User.findById(userId);
     await logAuctionEvent({
       auctionId: auction._id,
@@ -47,21 +71,33 @@ export const createAuction = async (req, res) => {
       },
     });
 
-    res.status(201).json({ success: true, auction });
+    // admin-Notification 
+    await pushAdminNotification({
+      auctionId: auction._id,
+      userId: req.user._id,
+      type: "AUCTION_VERIFICATION",
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Auction created successfully",
+      auction,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    console.error("createAuction error:", err);
+    return res.status(400).json({ success: false, message: err.message });
   }
-};
+}
 
 /**
- * Edit auction details (only before 2 days of auction start)
+ * Edit auction details (only before 1 days of auction start)
  * Editable fields: startTime, endTime, minIncrement, startingPrice, item.description, item.images
  */
 export const editAuction = async (req, res) => {
   try {
     const { auctionId } = req.params;
     const userId = req.user._id;
-    const updates = req.body;
+    const updates = req.validUpdates;
 
     const auction = await Auction.findById(auctionId);
     if (!auction) {
@@ -72,24 +108,26 @@ export const editAuction = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized to edit this auction" });
     }
 
-    // edit info before 2 days of auction starts
+    // edit info before 1 days of auction starts
     const now = new Date();
     const timeDifference = auction.startTime - now; // in ms
     const daysLeft = timeDifference / (1000 * 60 * 60 * 24);
 
-    if (daysLeft <= 2) {
+    if (daysLeft <= 1) {
       return res.status(400).json({
         success: false,
-        message: "You can only edit auction details up to 2 days before it starts.",
+        message: "You can only edit auction details up to 1 days before it starts.",
       });
     }
 
+    // update auction
     const updatedAuction = await Auction.findByIdAndUpdate(
       auctionId,
       { ...updates, updatedAt: new Date() },
       { new: true }
     );
 
+    // logs
     const auctionOwner = await User.findById(userId);
     await logAuctionEvent({
       auctionId: updatedAuction._id,
@@ -134,20 +172,25 @@ export const deleteAuction = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized to delete this auction" });
     }
 
-    // delete auction is only allowed before 2 days of auction starts
+    // delete auction is only allowed before 1 days of auction starts
     const now = new Date();
     const timeDifference = auction.startTime - now; // in ms
     const daysLeft = timeDifference / (1000 * 60 * 60 * 24);
 
-    if (daysLeft <= 2) {
+    if (daysLeft <= 1) {
       return res.status(400).json({
         success: false,
-        message: "You can only delete auction up to 2 days before it starts.",
+        message: "You can only delete auction up to 1 days before it starts.",
       });
     }
 
-    await Auction.findOneAndDelete({ auctionId, userId });
+    // delete - not actually 
+    await Auction.findByIdAndUpdate(
+      auctionId,
+      { $set: { status: "CANCELLED" } },
+    );
 
+    // logs
     const auctionOwner = await User.findById(userId);
     await logAuctionEvent({
       auctionId: auction._id,
@@ -197,3 +240,44 @@ export const listAuctions = async (req, res) => {
     res.status(400).json({ success: false, message: err.message });
   }
 };
+
+/**
+ * Registration for an auction is strat before 24 hr.
+ * it's end when last 5 minutes remaining of the auction.
+ * 
+ * bidvault/auctions/:auctionId/au-registration
+ *    email: .........
+ *    |pay| <- click
+ * redirect to 
+ * bidvault/auctions/:auctionId/au-registration/pay
+ */
+export const handleRegisterInAuction = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const {auctionId} = req.params;
+
+    const auction = await Auction.findById(auctionId);
+    if (!auction) {
+      return res.status(400).json({ success: false, message: "Auction not found" });
+    } 
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // redirect to login page
+      return res.status(400).json({ success: false, message: "User not found" });
+    }
+    
+    if(user._id === auction.createdBy){
+      return res.status(400).json({ success: false, message: "You are seller"});
+    }
+
+    return res.json({
+      success: true,
+      redirectUrl: `/bidvault/auctions/${auctionId}/au-registration/pay`
+    });
+
+  }
+  catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+}

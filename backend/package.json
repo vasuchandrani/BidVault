@@ -19,7 +19,9 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.2",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.10",
+    "qrcode": "^1.5.4",
     "redlock": "^5.0.0-beta.2",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
