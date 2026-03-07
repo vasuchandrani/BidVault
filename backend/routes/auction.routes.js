@@ -4,6 +4,7 @@ import {
     handleDeleteAuction,
     handleEditAuction,
     handleRegisterInAuction,
+    handlePayment,
     listAuctions,
     getAuction
 } from "../controllers/auction.controller.js";
@@ -50,6 +51,12 @@ router.delete("/:auctionId",
 router.post("/:auctionId/register", 
     restrictToLoggedInUserOnly, 
     handleRegisterInAuction
+);
+
+// when auction ends, winner need to pay pay the amount
+router.post("/:auctionId/pay",
+    restrictToLoggedInUserOnly,
+    handlePayment
 );
 
 // get list of auctions with status filter
