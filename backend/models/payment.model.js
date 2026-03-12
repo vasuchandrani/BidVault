@@ -16,12 +16,12 @@ const PaymentSchema = new mongoose.Schema({
     },
     status: { 
         type: String, 
-        enum: ['PENDING', 'SUCCESS', 'FAILED'], 
+        enum: ['PENDING', 'SUCCESS', 'PAID', 'FAILED'], 
         required: true
     },
     type: {
         type: String,
-        enum: ['REGISTRATION FEES', 'WINNING PAYMENT']
+        enum: ['REGISTRATION_FEES', 'WINNING_PAYMENT', 'BUY_IT_NOW_PAYMENT']
     },
     metadata: { 
         type: Object 
